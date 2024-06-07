@@ -22,7 +22,8 @@ services:
 }
 
 services.DetectorClocksService.TrigModuleName: "triggersim"
-services.DetectorClocksService.TrigModuleName: "daq"
+#services.DetectorClocksService.TrigModuleName: "daq" #to be removed!
+
 services.SpaceCharge.EnableCorrSCE: true
 services.SpaceCharge.EnableSimEfieldSCE: true
 services.SpaceCharge.EnableSimSpatialSCE: true

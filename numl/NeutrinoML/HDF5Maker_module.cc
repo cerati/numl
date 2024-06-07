@@ -115,6 +115,7 @@ private:
   float fXOffset;
 
   bool fFilesBySubrun;
+  bool fIsMC;
   hep_hpc::hdf5::File fFile;  ///< Output HDF5 file
 
   hep_hpc::hdf5::Ntuple<Column<int, 1>     // event id (run, subrun, event)
@@ -185,6 +186,7 @@ private:
                         Column<int, 1>,    // hit id
 			Column<int, 1>,    // hit_channel
 			Column<int, 1>,    // wire pos
+			Column<float, 1>,  // yz pos
 			Column<float, 1>,  // peaktime
 			Column<float, 1>,  // width
 			Column<float, 1>,  // area
@@ -317,7 +319,8 @@ HDF5Maker::HDF5Maker(fhicl::ParameterSet const& p)
     fEventInfo( p.get<string>("EventInfo")),
     fOutputName(p.get<string>("OutputName")),
     fXOffset(p.get<float>("XOffset")),
-    fFilesBySubrun(p.get<bool>("FilesBySubrun",true))
+    fFilesBySubrun(p.get<bool>("FilesBySubrun",true)),
+    fIsMC(p.get<bool>("IsMC",true))
 {
   if (fEventInfo != "none" && fEventInfo != "nu")
     throw art::Exception(art::errors::Configuration)
@@ -327,7 +330,7 @@ HDF5Maker::HDF5Maker(fhicl::ParameterSet const& p)
 void HDF5Maker::analyze(art::Event const& e)
 {
   cheat::BackTrackerService* bt = 0;
-  if (fUseMap==false) {
+  if (fUseMap==false && fIsMC==true) {
     art::ServiceHandle<cheat::BackTrackerService> bt_h;
     bt = bt_h.get();
   }
@@ -358,6 +361,7 @@ void HDF5Maker::analyze(art::Event const& e)
         << "Expected to find exactly one MC truth object!";
     }
     simb::MCNeutrino nutruth = truthHandle->at(0).GetNeutrino();
+    //std::cout << "CCNC=" << nutruth.CCNC() << std::endl;
 
     array<float, 3> nuDirection {
       (float)nutruth.Nu().Momentum().Vect().Unit().X(),
@@ -366,13 +370,17 @@ void HDF5Maker::analyze(art::Event const& e)
     };
 
     array<float, 3> nuVtx { (float)nutruth.Nu().Vx(), (float)nutruth.Nu().Vy(), (float)nutruth.Nu().Vz() };
+    //std::cout << "nuVtx=" << nuVtx[0] << ", " << nuVtx[1] << ", " << nuVtx[2] << std::endl;
     
     float nuT = nutruth.Nu().T();
+    //std::cout << "nuT=" << nuT << std::endl;
     array<float, 3> nuVtxCorr { (float)nutruth.Nu().Vx(), (float)nutruth.Nu().Vy(), (float)nutruth.Nu().Vz() };
     True2RecoMappingXYZ(nuT, nuVtxCorr[0], nuVtxCorr[1], nuVtxCorr[2]);
+    //std::cout << "nuVtxCorr=" << nuVtxCorr[0] << ", " << nuVtxCorr[1] << ", " << nuVtxCorr[2] << std::endl;
 
     vector<int> nearwires;
     for (auto p : geo->IteratePlaneIDs()) nearwires.push_back(NearWire(*geo,p,nuVtxCorr[0],nuVtxCorr[1],nuVtxCorr[2]));
+    //for (size_t p=0;p<3;p++) std::cout << "nearwire p=" << p << " w=" << nearwires[p] << std::endl;
 
     fEventNtupleNu->insert( evtID.data(),
       nutruth.CCNC() == simb::kCC,
@@ -462,6 +470,7 @@ void HDF5Maker::analyze(art::Event const& e)
     size_t plane = wireid.Plane;
     size_t wire = wireid.Wire;
     double time = hit->PeakTime();
+    //std::cout << "hit p=" << wireid.Plane << " w=" << wireid.Wire << " t=" << hit->PeakTime() << std::endl;
     fHitNtuple->insert(evtID.data(),
       hit.key(), hit->Integral(), hit->RMS(), wireid.TPC,
       // plane, wire, time,
@@ -481,6 +490,7 @@ void HDF5Maker::analyze(art::Event const& e)
                          << ", local time " << hit->PeakTime();
                          
 
+    if (fIsMC) {
     // Fill energy deposit table
     if (fUseMap) {
       std::vector<art::Ptr<simb::MCParticle>> particle_vec = hittruth->at(hit.key());
@@ -515,6 +525,7 @@ void HDF5Maker::analyze(art::Event const& e)
 			     << ide.energyFrac;
       } // for energy deposit
     } // if using microboone map method or not
+    }// isMC
   } // for hit
 
   art::Handle< vector< recob::Slice > > sliceListHandle;
@@ -681,7 +692,7 @@ void HDF5Maker::analyze(art::Event const& e)
      );
   }
 
-
+  if (fIsMC) {
   const std::vector<sim::MCShower> &inputMCShower = *(e.getValidHandle<std::vector<sim::MCShower> >("mcreco"));
   const std::vector<sim::MCTrack> &inputMCTrack = *(e.getValidHandle<std::vector<sim::MCTrack> >("mcreco"));
   std::vector<HDF5Maker::BtPart> btparts_v = initBacktrackingParticleVec(inputMCShower, inputMCTrack, *hitListHandle, hittruth);
@@ -774,6 +785,7 @@ void HDF5Maker::analyze(art::Event const& e)
                          << "\nstart process " << p->Process()
                          << ", end process " << p->EndProcess();
   }
+  }
 
   // Get OpFlashs from the event record
   art::Handle< vector< OpFlash > > opFlashListHandle;
@@ -849,7 +861,7 @@ void HDF5Maker::analyze(art::Event const& e)
     }
     // Fill ophit table
     fOpHitNtuple->insert(evtID.data(),ophit.key(),
-			 ophit->OpChannel(),nearwires.data(),
+			 ophit->OpChannel(),nearwires.data(),vector<float>({float(xyz[1]),float(xyz[2])}).data(),
 			 ophit->PeakTime(),ophit->Width(),
 			 ophit->Area(),ophit->Amplitude(),ophit->PE(),
 			 (isInFlash ? flashsumpepmtmap[maxkey][ophit->OpChannel()] : -1)
@@ -980,6 +992,7 @@ void HDF5Maker::createFile(const art::SubRun* sr) {
         make_scalar_column<int>("hit_id"),
         make_scalar_column<int>("hit_channel"),
         make_column<int>("wire_pos", ServiceHandle<geo::Geometry>()->Nviews()),
+        make_column<float>("yz_pos", 2),
         make_scalar_column<float>("peaktime"),
         make_scalar_column<float>("width"),
         make_scalar_column<float>("area"),
@@ -1082,13 +1095,26 @@ void HDF5Maker::closeFile() {
 // e.g. used for resolution plots
 void HDF5Maker::True2RecoMappingXYZ(float& t, float& x, float& y, float& z)
 {
+  //std::cout << "x_in=" << x << std::endl;
   ApplySCEMappingXYZ(x, y, z);
+  //std::cout << "x_sce=" << x << std::endl;
   auto const &detProperties = lar::providerFrom<detinfo::DetectorPropertiesService>();
   auto const &detClocks = lar::providerFrom<detinfo::DetectorClocksService>();
   double g4Ticks = detClocks->TPCG4Time2Tick(t) + detProperties->GetXTicksOffset(0, 0, 0) - detProperties->TriggerOffset();
-  float _xtimeoffset = detProperties->ConvertTicksToX(g4Ticks, 0, 0, 0);
+  double _xtimeoffset = detProperties->ConvertTicksToX(g4Ticks, 0, 0, 0);
+  //std::cout << "t=" << t << " G4T2Tick=" << detClocks->TPCG4Time2Tick(t) << " tickoffs=" << detProperties->GetXTicksOffset(0, 0, 0) << " trigoffs=" << detProperties->TriggerOffset() << " xoffs=" << _xtimeoffset << std::endl;
+  //std::cout << "g4Ticks=" << g4Ticks << std::endl;
+  //std::cout << "g42elec=" << detClocks->G4ToElecTime(t) << " tpctime="  << std::setprecision(15) << detClocks->TPCTime() << " period=" << detClocks->TPCClock().TickPeriod() << std::endl;
+  //std::cout << "fXTicksCoefficient=" << detProperties->GetXTicksCoefficient() << " " << detProperties->GetXTicksCoefficient(0,0) << " offset=" << detProperties->GetXTicksOffset(0, 0, 0) << std::endl;
+  //std::cout << "fXOffset=" << fXOffset << std::endl;
+  //std::cout << _xtimeoffset << " " << detProperties->ConvertTicksToX(detClocks->TPCG4Time2Tick(t), 0, 0, 0) << std::endl;
   x += _xtimeoffset;
   x += fXOffset;
+  //std::cout << "x_corr=" << x << std::endl;
+  //std::cout << detClocks->TPCTime()*detProperties->GetXTicksCoefficient()/detClocks->TPCClock().TickPeriod() << std::endl;
+  // x = (t - to)*t2cm
+  // x.*t2cm + to = t
+  //std::cout << "x_corr ticks=" << x/0.0548965+800 << std::endl;
 }
 
 // apply the mapping of XYZ true -> XYZ position after SCE-induced shift.
@@ -1100,6 +1126,7 @@ void HDF5Maker::ApplySCEMappingXYZ(float& x, float& y, float& z)
   if (SCE->EnableSimSpatialSCE() == true)
     {
       auto offset = SCE->GetPosOffsets(geo::Point_t(x, y, z));
+      //std::cout << "SCE corr! offset=" << offset << std::endl;
       x -= offset.X();
       y += offset.Y();
       z += offset.Z();
