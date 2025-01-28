@@ -1,8 +1,9 @@
 #include "services_common_icarus.fcl"
 #include "services_icarus_simulation.fcl"
+#include "SpacePointSolver.fcl"
 #include "HDF5Maker.fcl"
 
-process_name: numl
+process_name: trueenergy
 
 services:
 {
@@ -15,6 +16,14 @@ services:
   @table::icarus_common_services
   @table::icarus_backtracking_services 
   message:               @local::icarus_message_services_prod_debug
+  ParticleInventoryService: { 
+        ParticleInventory: {
+        EveIdCalculator: "EmEveIdCalculator"
+        G4ModuleLabel: "largeant"
+	OverrideRealData: true
+     }
+  }
+
                          
 } # services
 
@@ -32,17 +41,28 @@ physics:
     hdf5maker:   @local::hdf5maker
   }
 
-  ana:       [ hdf5maker ]
-  end_paths:     [ ana ]  
+ producers:
+  {
+    nuslhits: { module_type: "PandoraNuSliceHitsProducer" }
+   # sps: cluster3DCryoE
+  }
+ 
+ reco: [nuslhits]
+ ana:       [ hdf5maker ]
+  
+trigger_paths:       [ reco ]
+ end_paths:     [ ana ]
+
+
+  
 }
 
-physics.analyzers.hdf5maker.SPLabel: "cluster3DCryoE"
-physics.analyzers.hdf5maker.HitLabel: "cluster3DCryoE"
-physics.analyzers.hdf5maker.OpHitLabel:"ophit"
+physics.analyzers.hdf5maker.SPLabel: "nuslhits"
+physics.analyzers.hdf5maker.HitLabel: "nuslhits"
 physics.analyzers.hdf5maker.OpFlashLabel:"opflashCryoE"
+physics.analyzers.hdf5maker.OpHitLabel:"ophit"
 physics.analyzers.hdf5maker.PFParticleLabel:"pandoraGausCryoE"
 physics.analyzers.hdf5maker.T0Label:"opflashT0"
+physics.analyzers.hdf5maker.UseMap: false
 services.BackTrackerService.BackTracker.G4ModuleLabel: "largeant"
 services.BackTrackerService.BackTracker.SimChannelModuleLabel: "daq:simpleSC"
-#services.GeometryService.BackTracker.SimChannelModuleLabel: "elecDrift"
-

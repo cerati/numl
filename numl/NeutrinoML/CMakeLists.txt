@@ -20,6 +20,11 @@ simple_plugin(HDF5Maker "module"
     larsim_MCCheater_ParticleInventoryService_service
     hep_hpc_hdf5
     hep_hpc_Utilities
+    lardataobj_RecoBase
+    lardataalg_DetectorInfo
+    lardata_DetectorInfoServices_DetectorClocksServiceStandard_service
+    larcore::Geometry_Geometry_service
+    larsim::MCCheater_BackTrackerService_service
     ${HDF5_LIBRARIES}
 )
 
@@ -40,8 +45,13 @@ simple_plugin(PandoraNuSliceHitsProducer "module"
     cetlib
     cetlib_except
     ${ROOT_BASIC_LIB_LIST}
+    larsim_MCCheater_BackTrackerService_service           
+    larsim_MCCheater_ParticleInventoryService_service
     nusimdata_SimulationBase
     lardataobj_RecoBase
+    lardataalg_DetectorInfo
+    lardata_DetectorInfoServices_DetectorClocksServiceStandard_service
+    larcore::Geometry_Geometry_service
 )
 
 install_headers()
